@@ -8,7 +8,7 @@
  * - Deduplicate messages by UUID
  */
 
-import { Broadcaster, type BroadcastResult } from './broadcaster.js';
+import { Broadcaster, type BroadcastResult, type BroadcasterOptions } from './broadcaster.js';
 import type { UnifiedIdentity } from './identity.js';
 import { ChatDatabase } from './database.js';
 import { supportsXMTP, supportsWaku } from './runtime.js';
@@ -25,18 +25,25 @@ import { Relay } from 'nostr-tools/relay';
 import { finalizeEvent, nip04, type VerifiedEvent } from 'nostr-tools';
 import { getNostrKeys, getEthereumAccount } from './identity.js';
 import type { Client as XMTPClient } from '@xmtp/node-sdk';
+import { Logger } from './logger.js';
 
 export interface MessageHandler {
   (message: ChatMessage, protocol: string): Promise<void> | void;
 }
 
+export interface ReceiptHandler {
+  (messageUuid: string, protocol: string, isDuplicate: boolean): Promise<void> | void;
+}
+
 export class ChatBroadcaster extends Broadcaster {
   private db: ChatDatabase;
   private messageHandlers: MessageHandler[] = [];
+  private receiptHandlers: ReceiptHandler[] = [];
   private seenMessageUuids: Set<string> = new Set();
   private myMagnetLink: string;
+  private logger: Logger;
 
-  constructor(identity: UnifiedIdentity, db: ChatDatabase, options?: Partial<BroadcasterOptions>) {
+  constructor(identity: UnifiedIdentity, db: ChatDatabase, logger?: Logger, options?: Partial<BroadcasterOptions>) {
     // Merge provided options with defaults
     const defaultOptions: BroadcasterOptions = {
       xmtpEnabled: supportsXMTP(), // Auto-enabled on Node.js/Deno
@@ -55,14 +62,22 @@ export class ChatBroadcaster extends Broadcaster {
     // Override defaults with provided options
     const mergedOptions = { ...defaultOptions, ...options };
 
-    super(identity, mergedOptions);
+    // Create default logger if not provided
+    const effectiveLogger = logger || new Logger({ verbose: true });
+
+    super(identity, effectiveLogger, mergedOptions);
 
     this.db = db;
     this.myMagnetLink = identity.magnetLink;
+    this.logger = effectiveLogger;
   }
 
   onMessage(handler: MessageHandler): void {
     this.messageHandlers.push(handler);
+  }
+
+  onReceipt(handler: ReceiptHandler): void {
+    this.receiptHandlers.push(handler);
   }
 
   private async handleIncomingMessage(message: ChatMessage, protocol: string, server?: string): Promise<void> {
@@ -76,6 +91,12 @@ export class ChatBroadcaster extends Broadcaster {
         receivedAt: Date.now(),
         latencyMs: Date.now() - message.timestamp,
       });
+
+      // Notify receipt handlers about duplicate receipt
+      for (const handler of this.receiptHandlers) {
+        await handler(message.uuid, protocol, true);
+      }
+
       return;
     }
 
@@ -101,6 +122,11 @@ export class ChatBroadcaster extends Broadcaster {
       receivedAt: Date.now(),
       latencyMs: Date.now() - message.timestamp,
     });
+
+    // Notify receipt handlers about first receipt
+    for (const handler of this.receiptHandlers) {
+      await handler(message.uuid, protocol, false);
+    }
 
     // Update channel preferences if this is an acknowledgment
     if (isAcknowledgment(message)) {
@@ -176,25 +202,45 @@ export class ChatBroadcaster extends Broadcaster {
     try {
       await this.broadcast(originalMessage.fromMagnetLink, serialized);
     } catch (error) {
-      console.error('Failed to send acknowledgment:', error);
+      this.logger.error('Failed to send acknowledgment:', error);
     }
   }
 
   async startListening(): Promise<void> {
     // Listen on Nostr
-    await this.startNostrListener();
+    try {
+      await this.startNostrListener();
+    } catch (error) {
+      this.logger.warn('⚠️  Failed to start Nostr listener, continuing:', error);
+    }
 
     // Listen on XMTP
-    await this.startXMTPListener();
+    try {
+      await this.startXMTPListener();
+    } catch (error) {
+      this.logger.warn('⚠️  Failed to start XMTP listener, continuing:', error);
+    }
 
     // Listen on MQTT
-    await this.startMQTTListener();
+    try {
+      await this.startMQTTListener();
+    } catch (error) {
+      this.logger.warn('⚠️  Failed to start MQTT listener, continuing:', error);
+    }
 
     // Listen on IROH
-    await this.startIROHListener();
+    try {
+      await this.startIROHListener();
+    } catch (error) {
+      this.logger.warn('⚠️  Failed to start IROH listener, continuing:', error);
+    }
 
     // Listen on Waku
-    await this.startWakuListener();
+    try {
+      await this.startWakuListener();
+    } catch (error) {
+      this.logger.warn('⚠️  Failed to start Waku listener, continuing:', error);
+    }
   }
 
   private async startNostrListener(): Promise<void> {
@@ -206,40 +252,44 @@ export class ChatBroadcaster extends Broadcaster {
 
     // Subscribe to direct messages sent to us
     for (const relay of this.nostrRelays) {
-      const relayUrl = relay.url;
-      const sub = relay.subscribe(
-        [
+      try {
+        const relayUrl = relay.url;
+        const sub = relay.subscribe(
+          [
+            {
+              kinds: [4], // Encrypted DM
+              '#p': [publicKey], // Sent to us
+            },
+          ],
           {
-            kinds: [4], // Encrypted DM
-            '#p': [publicKey], // Sent to us
-          },
-        ],
-        {
-          onevent: async (event: VerifiedEvent) => {
-            try {
-              // Decrypt the message
-              const { privateKey } = getNostrKeys(this.identity);
-              const decrypted = await nip04.decrypt(
-                privateKey,
-                event.pubkey,
-                event.content
-              );
+            onevent: async (event: VerifiedEvent) => {
+              try {
+                // Decrypt the message
+                const { privateKey } = getNostrKeys(this.identity);
+                const decrypted = await nip04.decrypt(
+                  privateKey,
+                  event.pubkey,
+                  event.content
+                );
 
-              // Deserialize
-              const message = deserializeMessage(decrypted);
-              if (!message) {
-                console.error('Failed to deserialize Nostr message');
-                return;
+                // Deserialize
+                const message = deserializeMessage(decrypted);
+                if (!message) {
+                  this.logger.warn('Failed to deserialize Nostr message from relay', relayUrl);
+                  return;
+                }
+
+                // Handle the message with relay URL
+                await this.handleIncomingMessage(message, 'nostr', relayUrl);
+              } catch (error) {
+                this.logger.debug('Error processing Nostr message (may be normal):', error);
               }
-
-              // Handle the message with relay URL
-              this.handleIncomingMessage(message, 'nostr', relayUrl);
-            } catch (error) {
-              console.error('Error processing Nostr message:', error);
-            }
-          },
-        }
-      );
+            },
+          }
+        );
+      } catch (error) {
+        this.logger.warn(`⚠️  Failed to subscribe to Nostr relay ${relay.url}, continuing:`, error);
+      }
     }
   }
 
@@ -260,24 +310,24 @@ export class ChatBroadcaster extends Broadcaster {
               // Deserialize the message content
               const chatMessage = deserializeMessage(message.content);
               if (!chatMessage) {
-                console.error('Failed to deserialize XMTP message');
+                this.logger.error('Failed to deserialize XMTP message');
                 continue;
               }
 
               // Handle the message
               this.handleIncomingMessage(chatMessage, 'XMTP V3');
             } catch (error) {
-              console.error('Error processing XMTP message:', error);
+              this.logger.error('Error processing XMTP message:', error);
             }
           }
         } catch (error) {
-          console.error('Error in XMTP message stream:', error);
+          this.logger.error('Error in XMTP message stream:', error);
         }
       })();
 
       // Return immediately after starting the stream
     } catch (error) {
-      console.error('Error starting XMTP listener:', error);
+      this.logger.error('Error starting XMTP listener:', error);
     }
   }
 
@@ -290,36 +340,40 @@ export class ChatBroadcaster extends Broadcaster {
     const myTopic = `dm/${publicKey}`;
 
     for (const client of this.mqttClients) {
-      // Get the broker URL from client options
-      const brokerUrl = (client as any).options?.href || (client as any).options?.host || 'unknown';
+      try {
+        // Get the broker URL from client options
+        const brokerUrl = (client as any).options?.href || (client as any).options?.host || 'unknown';
 
-      // Subscribe to messages sent to our public key
-      client.subscribe(myTopic, { qos: 1 }, (err) => {
-        if (err) {
-          console.error('Error subscribing to MQTT topic:', err);
-        }
-      });
-
-      // Handle incoming messages
-      client.on('message', (topic: string, payload: Buffer) => {
-        if (topic !== myTopic) return;
-
-        try {
-          const data = JSON.parse(payload.toString());
-
-          // Deserialize the chat message from the content field
-          const chatMessage = deserializeMessage(data.content);
-          if (!chatMessage) {
-            console.error('Failed to deserialize MQTT message');
-            return;
+        // Subscribe to messages sent to our public key
+        client.subscribe(myTopic, { qos: 1 }, (err) => {
+          if (err) {
+            this.logger.warn(`⚠️  Error subscribing to MQTT topic on broker ${brokerUrl}:`, err);
           }
+        });
 
-          // Handle the message with broker URL
-          this.handleIncomingMessage(chatMessage, 'MQTT', brokerUrl);
-        } catch (error) {
-          console.error('Error processing MQTT message:', error);
-        }
-      });
+        // Handle incoming messages
+        client.on('message', (topic: string, payload: Buffer) => {
+          if (topic !== myTopic) return;
+
+          try {
+            const data = JSON.parse(payload.toString());
+
+            // Deserialize the chat message from the content field
+            const chatMessage = deserializeMessage(data.content);
+            if (!chatMessage) {
+              this.logger.warn(`Failed to deserialize MQTT message from broker ${brokerUrl}`);
+              return;
+            }
+
+            // Handle the message with broker URL
+            this.handleIncomingMessage(chatMessage, 'MQTT', brokerUrl);
+          } catch (error) {
+            this.logger.debug('Error processing MQTT message (may be normal):', error);
+          }
+        });
+      } catch (error) {
+        this.logger.warn('⚠️  Failed to set up MQTT listener for broker, continuing:', error);
+      }
     }
   }
 
@@ -331,7 +385,7 @@ export class ChatBroadcaster extends Broadcaster {
         // Deserialize the chat message
         const chatMessage = deserializeMessage(message);
         if (!chatMessage) {
-          console.error('Failed to deserialize IROH message');
+          this.logger.error('Failed to deserialize IROH message');
           return;
         }
 
@@ -341,7 +395,7 @@ export class ChatBroadcaster extends Broadcaster {
         // Silently ignore connection errors - they're expected when no peer is available
         const errMsg = String(error);
         if (!errMsg.includes('connection lost') && !errMsg.includes('closed by peer')) {
-          console.error('Error processing IROH message:', error);
+          this.logger.error('Error processing IROH message:', error);
         }
       }
     };
@@ -377,14 +431,14 @@ export class ChatBroadcaster extends Broadcaster {
         const chatMessage = deserializeMessage(data.content);
 
         if (!chatMessage) {
-          console.error('Failed to deserialize Waku message');
+          this.logger.error('Failed to deserialize Waku message');
           return;
         }
 
         // Handle the message
         await this.handleIncomingMessage(chatMessage, 'Waku');
       } catch (error) {
-        console.error('Error processing Waku message:', error);
+        this.logger.error('Error processing Waku message:', error);
       }
     });
   }

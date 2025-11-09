@@ -29,12 +29,14 @@ import { ChatBroadcaster } from './chat-broadcaster.js';
 import type { ChatMessage } from './message-types.js';
 import { UserManager, type UserProfile } from './user-manager.js';
 import type { BroadcasterOptions } from './broadcaster.js';
+import { initLogger, type Logger } from './logger.js';
 
 interface CLIArgs {
   protocols?: string[];
   user?: string;
   chat?: string;
   help?: boolean;
+  verbose?: boolean;
 }
 
 function parseArgs(): CLIArgs {
@@ -55,6 +57,8 @@ function parseArgs(): CLIArgs {
       args.user = argv[++i];
     } else if (arg === '--chat' || arg === '-c') {
       args.chat = argv[++i];
+    } else if (arg === '--verbose' || arg === '-v') {
+      args.verbose = true;
     }
   }
 
@@ -75,14 +79,16 @@ function showHelp() {
   console.log('                            Example: --user happy-blue-falcon\n');
   console.log('  --chat, -c <magnet-link>  Start chatting with this user immediately');
   console.log('                            Example: --chat magnet:?xt=urn%3A...\n');
+  console.log('  --verbose, -v             Enable verbose logging to console');
+  console.log('                            Logs are always saved to ~/.broadcast-on-all-channels/logs/<user>.log\n');
   console.log('  --help, -h                Show this help message\n');
   console.log('Examples:');
   console.log('  # Use only XMTP and Nostr');
   console.log('  tsx src/cli.ts --protocols xmtp,nostr\n');
   console.log('  # Use specific user and start chatting');
   console.log('  tsx src/cli.ts --user happy-blue-falcon --chat magnet:?xt=...\n');
-  console.log('  # Use only MQTT');
-  console.log('  npm run chat -- --protocols mqtt\n');
+  console.log('  # Use only MQTT with verbose logging');
+  console.log('  npm run chat -- --protocols mqtt --verbose\n');
 }
 
 class ChatClient {
@@ -94,6 +100,7 @@ class ChatClient {
   private userManager: UserManager;
   private currentUser!: UserProfile;
   private args: CLIArgs;
+  private logger!: Logger;
 
   constructor(args: CLIArgs = {}) {
     this.userManager = new UserManager();
@@ -108,15 +115,33 @@ class ChatClient {
     // Select or create user (with optional pre-selection)
     await this.selectUser();
 
+    // Initialize logger after user is selected
+    this.logger = initLogger({
+      username: this.currentUser.name,
+      verbose: this.args.verbose || false,
+    });
+
+    if (this.args.verbose) {
+      console.log(chalk.gray(`\n📝 Verbose logging enabled. Logs saved to: ${this.logger.getLogFilePath()}\n`));
+    } else {
+      console.log(chalk.gray(`\n📝 Logs saved to: ${this.logger.getLogFilePath()}`));
+      console.log(chalk.gray(`   Use --verbose or -v to see logs in console\n`));
+    }
+
     // Initialize database with user-specific path
     this.db = new ChatDatabase(this.userManager.getUserDbPath(this.currentUser.name));
 
     // Initialize broadcaster with protocol selection
-    this.broadcaster = new ChatBroadcaster(this.identity, this.db, this.getProtocolOptions());
+    this.broadcaster = new ChatBroadcaster(this.identity, this.db, this.logger, this.getProtocolOptions());
 
     // Set up message handler
     this.broadcaster.onMessage((message, protocol) => {
       this.handleIncomingMessage(message, protocol);
+    });
+
+    // Set up receipt handler for timing updates
+    this.broadcaster.onReceipt((messageUuid, protocol, isDuplicate) => {
+      this.handleReceipt(messageUuid, protocol, isDuplicate);
     });
 
     // Initialize broadcaster
@@ -375,6 +400,31 @@ class ChatClient {
       }
     }
     console.log('');
+
+    // Redraw prompt
+    if (this.chatPartner) {
+      process.stdout.write(chalk.green('You: '));
+    }
+  }
+
+  private handleReceipt(messageUuid: string, protocol: string, isDuplicate: boolean) {
+    // Only show updates for duplicate receipts (subsequent protocols)
+    if (!isDuplicate) {
+      return;
+    }
+
+    // Get all receipts for this message
+    const receipts = this.db.getMessageReceipts(messageUuid);
+    if (receipts.length < 2) {
+      return; // Should not happen, but safety check
+    }
+
+    const firstReceipt = receipts[0];
+    const currentReceipt = receipts[receipts.length - 1]; // Most recent
+    const delta = currentReceipt.receivedAt - firstReceipt.receivedAt;
+
+    // Show the update
+    console.log(chalk.gray(`\n  📡 Also received via: ${chalk.white(protocol)} ${chalk.yellow(`+${delta}ms slower`)}`));
 
     // Redraw prompt
     if (this.chatPartner) {
