@@ -357,15 +357,21 @@ class ChatClient {
     // Display the message
     console.log('');
     console.log(chalk.blue.bold(`Them: ${message.content}`));
-    console.log(chalk.gray(`  First received via: ${firstReceipt?.protocol || protocol}`));
+
+    // Show first protocol (fastest)
+    if (firstReceipt) {
+      console.log(chalk.green(`  ⚡ First received via: ${chalk.bold(firstReceipt.protocol)}`));
+    } else {
+      console.log(chalk.green(`  ⚡ First received via: ${chalk.bold(protocol)}`));
+    }
 
     // Show subsequent receipts with time deltas
     if (receipts.length > 1) {
-      console.log(chalk.gray(`  Also received:`));
+      console.log(chalk.gray(`  📡 Also received via:`));
       for (let i = 1; i < receipts.length; i++) {
         const receipt = receipts[i];
         const delta = receipt.receivedAt - firstReceipt.receivedAt;
-        console.log(chalk.gray(`    • ${receipt.protocol} (+${delta}ms)`));
+        console.log(chalk.gray(`     • ${chalk.white(receipt.protocol)} ${chalk.yellow(`+${delta}ms slower`)}`));
       }
     }
     console.log('');
