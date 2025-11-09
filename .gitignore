@@ -147,9 +147,6 @@ prompt_history.txt
 *.db-shm
 *.db-wal
 *.sqlcipher_salt
-data/*.db
-data/identities/
-data/users/
-data/xmtp/
-data/demo-*.db
-data/continuous-test-*.db
+
+# Ignore all data directory contents (user data, databases, etc.)
+data/*
