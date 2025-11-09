@@ -29,6 +29,7 @@ export interface MessageReceipt {
   id?: number;
   messageUuid: string;
   protocol: string;
+  server?: string; // Server/relay URL (e.g., wss://relay.damus.io for Nostr, mqtt://broker.hivemq.com for MQTT)
   receivedAt: number;
   latencyMs: number;
 }
@@ -144,6 +145,7 @@ export class ChatDatabase {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message_uuid TEXT NOT NULL,
         protocol TEXT NOT NULL,
+        server TEXT,
         received_at INTEGER NOT NULL,
         latency_ms INTEGER NOT NULL,
         FOREIGN KEY (message_uuid) REFERENCES messages(uuid)
@@ -176,6 +178,19 @@ export class ChatDatabase {
       )
     `);
 
+    // Migration: Add server column to existing message_receipts tables
+    try {
+      // Check if server column exists
+      const tableInfo = await this.db.execute('PRAGMA table_info(message_receipts)');
+      const hasServerColumn = tableInfo.rows.some(row => row.name === 'server');
+
+      if (!hasServerColumn) {
+        await this.db.execute('ALTER TABLE message_receipts ADD COLUMN server TEXT');
+      }
+    } catch (error) {
+      // Column might already exist or table doesn't exist yet
+    }
+
     // Indexes for performance
     await this.db.execute(`
       CREATE INDEX IF NOT EXISTS idx_messages_uuid ON messages(uuid)
@@ -188,6 +203,9 @@ export class ChatDatabase {
     `);
     await this.db.execute(`
       CREATE INDEX IF NOT EXISTS idx_receipts_uuid ON message_receipts(message_uuid)
+    `);
+    await this.db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_receipts_server ON message_receipts(server)
     `);
     await this.db.execute(`
       CREATE INDEX IF NOT EXISTS idx_prefs_identity ON channel_preferences(identity)
@@ -284,10 +302,10 @@ export class ChatDatabase {
     await this.executeWithRetry(() =>
       this.db.execute({
         sql: `
-          INSERT INTO message_receipts (message_uuid, protocol, received_at, latency_ms)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO message_receipts (message_uuid, protocol, server, received_at, latency_ms)
+          VALUES (?, ?, ?, ?, ?)
         `,
-        args: [receipt.messageUuid, receipt.protocol, receipt.receivedAt, receipt.latencyMs],
+        args: [receipt.messageUuid, receipt.protocol, receipt.server || null, receipt.receivedAt, receipt.latencyMs],
       })
     );
   }
@@ -302,6 +320,7 @@ export class ChatDatabase {
       id: row.id as number,
       messageUuid: row.message_uuid as string,
       protocol: row.protocol as string,
+      server: row.server as string | undefined,
       receivedAt: row.received_at as number,
       latencyMs: row.latency_ms as number,
     }));

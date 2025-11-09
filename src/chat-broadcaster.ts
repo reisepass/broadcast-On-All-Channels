@@ -65,13 +65,14 @@ export class ChatBroadcaster extends Broadcaster {
     this.messageHandlers.push(handler);
   }
 
-  private async handleIncomingMessage(message: ChatMessage, protocol: string): Promise<void> {
+  private async handleIncomingMessage(message: ChatMessage, protocol: string, server?: string): Promise<void> {
     // Deduplicate by UUID
     if (this.seenMessageUuids.has(message.uuid)) {
       // Already seen this message, just record the receipt
       await this.db.saveMessageReceipt({
         messageUuid: message.uuid,
         protocol,
+        server,
         receivedAt: Date.now(),
         latencyMs: Date.now() - message.timestamp,
       });
@@ -96,6 +97,7 @@ export class ChatBroadcaster extends Broadcaster {
     await this.db.saveMessageReceipt({
       messageUuid: message.uuid,
       protocol,
+      server,
       receivedAt: Date.now(),
       latencyMs: Date.now() - message.timestamp,
     });
@@ -204,6 +206,7 @@ export class ChatBroadcaster extends Broadcaster {
 
     // Subscribe to direct messages sent to us
     for (const relay of this.nostrRelays) {
+      const relayUrl = relay.url;
       const sub = relay.subscribe(
         [
           {
@@ -229,8 +232,8 @@ export class ChatBroadcaster extends Broadcaster {
                 return;
               }
 
-              // Handle the message
-              this.handleIncomingMessage(message, 'nostr');
+              // Handle the message with relay URL
+              this.handleIncomingMessage(message, 'nostr', relayUrl);
             } catch (error) {
               console.error('Error processing Nostr message:', error);
             }
@@ -287,6 +290,9 @@ export class ChatBroadcaster extends Broadcaster {
     const myTopic = `dm/${publicKey}`;
 
     for (const client of this.mqttClients) {
+      // Get the broker URL from client options
+      const brokerUrl = (client as any).options?.href || (client as any).options?.host || 'unknown';
+
       // Subscribe to messages sent to our public key
       client.subscribe(myTopic, { qos: 1 }, (err) => {
         if (err) {
@@ -308,8 +314,8 @@ export class ChatBroadcaster extends Broadcaster {
             return;
           }
 
-          // Handle the message
-          this.handleIncomingMessage(chatMessage, 'MQTT');
+          // Handle the message with broker URL
+          this.handleIncomingMessage(chatMessage, 'MQTT', brokerUrl);
         } catch (error) {
           console.error('Error processing MQTT message:', error);
         }
