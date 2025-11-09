@@ -159,13 +159,17 @@ export class Broadcaster {
   private async initXMTP(): Promise<void> {
     try {
       const signer = createXMTPSigner(this.identity);
-      const { randomBytes } = await import('node:crypto');
+      const { createHash } = await import('node:crypto');
 
-      // Create encryption key as Uint8Array (32 bytes for 256-bit encryption)
-      const dbEncryptionKey = new Uint8Array(randomBytes(32));
+      // Derive a deterministic encryption key from the user's private key
+      // This ensures the same user always gets the same encryption key
+      const account = getEthereumAccount(this.identity);
+      const keyMaterial = `xmtp-encryption-${account.address}-${this.identity.secp256k1.privateKey}`;
+      const dbEncryptionKey = new Uint8Array(
+        createHash('sha256').update(keyMaterial).digest()
+      );
 
       // Create absolute database path for XMTP's encrypted message store
-      const account = getEthereumAccount(this.identity);
       const xmtpDir = resolve(process.cwd(), 'data/xmtp');
 
       // Ensure the directory exists
