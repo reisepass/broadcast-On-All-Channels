@@ -477,7 +477,13 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
-      this.logger.error(`❌ [XMTP] Send failed:`, error);
+      // XMTP failures are expected in a redundant system - log as debug, not error
+      const errorMsg = String(error);
+      if (errorMsg.includes('timeout') || errorMsg.includes('connection') || errorMsg.includes('not initialized')) {
+        this.logger.debug(`[XMTP] Send failed (expected in redundant system):`, error);
+      } else {
+        this.logger.warn(`[XMTP] Send failed:`, error);
+      }
       return {
         protocol: 'XMTP V3',
         success: false,
@@ -540,7 +546,13 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
-      this.logger.error(`❌ [Nostr] Send failed:`, error);
+      // Nostr failures are expected in a redundant system - log as debug, not error
+      const errorMsg = String(error);
+      if (errorMsg.includes('No connected') || errorMsg.includes('Failed to publish') || errorMsg.includes('relay')) {
+        this.logger.debug(`[Nostr] Send failed (expected in redundant system):`, error);
+      } else {
+        this.logger.warn(`[Nostr] Send failed:`, error);
+      }
       return {
         protocol: 'Nostr',
         success: false,
@@ -593,7 +605,13 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
-      this.logger.error('❌ [Waku] Send failed:', error);
+      // Waku failures are expected in a redundant system - log as debug, not error
+      const errorMsg = String(error);
+      if (errorMsg.includes('not initialized') || errorMsg.includes('timeout') || errorMsg.includes('peer')) {
+        this.logger.debug(`[Waku] Send failed (expected in redundant system):`, error);
+      } else {
+        this.logger.warn(`[Waku] Send failed:`, error);
+      }
       return {
         protocol: 'Waku',
         success: false,
@@ -608,7 +626,7 @@ export class Broadcaster {
 
     this.logger.info('🟠 [MQTT] Starting message send...');
     if (this.mqttClients.length === 0) {
-      this.logger.error('❌ [MQTT] No clients connected');
+      this.logger.debug('[MQTT] No clients connected (expected in redundant system)');
       return {
         protocol: 'MQTT',
         success: false,
@@ -633,7 +651,7 @@ export class Broadcaster {
         try {
           client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
             if (err) {
-              this.logger.warn(`⚠️  [MQTT] Broker ${index + 1} failed:`, err);
+              this.logger.debug(`[MQTT] Broker ${index + 1} failed (expected in redundant system):`, err);
               resolve({ success: false, error: String(err) });
             } else {
               this.logger.info(`✅ [MQTT] Broker ${index + 1} success`);
@@ -641,7 +659,7 @@ export class Broadcaster {
             }
           });
         } catch (error) {
-          this.logger.warn(`⚠️  [MQTT] Broker ${index + 1} exception:`, error);
+          this.logger.debug(`[MQTT] Broker ${index + 1} exception (expected in redundant system):`, error);
           resolve({ success: false, error: String(error) });
         }
       });
@@ -710,7 +728,13 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
-      this.logger.error(`❌ [IROH] Send failed:`, error);
+      // IROH failures are expected in a redundant system - log as debug/info, not error
+      const errorMsg = String(error);
+      if (errorMsg.includes('timed out') || errorMsg.includes('connection') || errorMsg.includes('Connecting to ourself') || errorMsg.includes('Cannot send IROH message to self')) {
+        this.logger.debug(`[IROH] Send failed (expected in redundant system):`, error);
+      } else {
+        this.logger.warn(`[IROH] Send failed:`, error);
+      }
       return {
         protocol: 'IROH',
         success: false,

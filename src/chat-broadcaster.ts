@@ -202,7 +202,7 @@ export class ChatBroadcaster extends Broadcaster {
     try {
       await this.broadcast(originalMessage.fromMagnetLink, serialized);
     } catch (error) {
-      this.logger.error('Failed to send acknowledgment:', error);
+      this.logger.debug('Failed to send acknowledgment (expected in redundant system):', error);
     }
   }
 
@@ -310,14 +310,14 @@ export class ChatBroadcaster extends Broadcaster {
               // Deserialize the message content
               const chatMessage = deserializeMessage(message.content);
               if (!chatMessage) {
-                this.logger.error('Failed to deserialize XMTP message');
+                this.logger.debug('Failed to deserialize XMTP message (may be non-chat message)');
                 continue;
               }
 
               // Handle the message
               this.handleIncomingMessage(chatMessage, 'XMTP V3');
             } catch (error) {
-              this.logger.error('Error processing XMTP message:', error);
+              this.logger.debug('Error processing XMTP message (may be non-chat message):', error);
             }
           }
         } catch (error) {
