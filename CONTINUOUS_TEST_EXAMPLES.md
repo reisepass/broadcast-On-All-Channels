@@ -5,8 +5,10 @@ The continuous test is designed for testing real-world multi-protocol performanc
 ## Basic Usage
 
 ```bash
-npm run test:continuous -- --recipient <magnet-link>
+npm run test:continuous -- --recipient "YOUR_RECIPIENT_MAGNET_LINK_HERE"
 ```
+
+Replace `YOUR_RECIPIENT_MAGNET_LINK_HERE` with the actual magnet link (see "How to Get a Magnet Link" below).
 
 ## Options
 
@@ -17,81 +19,102 @@ npm run test:continuous -- --recipient <magnet-link>
 | `--interval` | - | Seconds between messages | 10 |
 | `--help` | `-h` | Show help message | - |
 
+## How to Get a Magnet Link
+
+First, get the recipient's magnet link by running on their computer:
+
+```bash
+npm run chat
+```
+
+Copy the full magnet link from the output. It will look like:
+```
+magnet:?xt=urn%3Aidentity%3Av1&secp256k1pub=04fd0505a70bf3b5b16b9d63ce7629525fd30af31a0b8f124826c22001ae31ac5c4c767e7bd74f6d21d81f038096155b258b27cd4f1d0143e70e8ea11dd09479e6&ed25519pub=bc75d7de564965c168d0fe965050bfdde40db5c1c2e34220311f8a529572397d&eth=0x33F32f9321919C8D4638b17112135df64ec02166
+```
+
 ## Example Commands
+
+**IMPORTANT:** Replace `YOUR_RECIPIENT_MAGNET_LINK_HERE` with the actual magnet link you copied above.
 
 ### 1. Basic continuous test with default settings (10 second intervals)
 
 ```bash
-npm run test:continuous -- --recipient "magnet:?xt=urn%3Aidentity%3Av1&secp256k1pub=04fd0505a70bf3b5b16b9d63ce7629525fd30af31a0b8f124826c22001ae31ac5c4c767e7bd74f6d21d81f038096155b258b27cd4f1d0143e70e8ea11dd09479e6&ed25519pub=bc75d7de564965c168d0fe965050bfdde40db5c1c2e34220311f8a529572397d&eth=0x33F32f9321919C8D4638b17112135df64ec02166"
+npm run test:continuous -- --recipient "YOUR_RECIPIENT_MAGNET_LINK_HERE"
 ```
 
 ### 2. Short form with alias
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=urn%3Aidentity%3Av1&secp256k1pub=..."
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE"
 ```
 
 ### 3. Use a specific identity (identity index 1)
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=..." -i 1
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE" -i 1
 ```
 
 ### 4. Custom interval (send every 5 seconds)
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=..." --interval 5
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE" --interval 5
 ```
 
 ### 5. Fast testing (1 second intervals)
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=..." --interval 1
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE" --interval 1
 ```
 
 ### 6. Slow testing (send every minute)
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=..." --interval 60
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE" --interval 60
 ```
 
 ### 7. Combine all options
 
 ```bash
-npm run test:continuous -- -r "magnet:?xt=..." -i 2 --interval 15
+npm run test:continuous -- -r "YOUR_RECIPIENT_MAGNET_LINK_HERE" -i 2 --interval 15
 ```
 
 ## Two-Computer Setup
 
-### Computer A (Sender)
+### Computer A
 
 1. Get your magnet link:
    ```bash
    npm run chat
    ```
-   Copy your magnet link from the output.
+   Copy your magnet link from the output (the line starting with `magnet:?xt=`).
 
-2. Share it with Computer B
+2. Send your magnet link to Computer B (via email, messaging, etc.)
 
-3. Start listening and sending:
+3. Get Computer B's magnet link from them
+
+4. Start the continuous test:
    ```bash
-   npm run test:continuous -- -r "COMPUTER_B_MAGNET_LINK"
+   npm run test:continuous -- -r "PASTE_COMPUTER_B_MAGNET_LINK_HERE"
    ```
 
-### Computer B (Receiver)
+### Computer B
 
 1. Get your magnet link:
    ```bash
    npm run chat
    ```
-   Copy your magnet link from the output.
+   Copy your magnet link from the output (the line starting with `magnet:?xt=`).
 
-2. Share it with Computer A
+2. Send your magnet link to Computer A (via email, messaging, etc.)
 
-3. Start listening and sending:
+3. Get Computer A's magnet link from them
+
+4. Start the continuous test:
    ```bash
-   npm run test:continuous -- -r "COMPUTER_A_MAGNET_LINK"
+   npm run test:continuous -- -r "PASTE_COMPUTER_A_MAGNET_LINK_HERE"
    ```
+
+Both computers will now send messages to each other and display live statistics.
 
 ## What You'll See
 
