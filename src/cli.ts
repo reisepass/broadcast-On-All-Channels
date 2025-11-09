@@ -413,22 +413,32 @@ class ChatClient {
       return;
     }
 
-    // Get all receipts for this message
-    const receipts = this.db.getMessageReceipts(messageUuid);
-    if (receipts.length < 2) {
-      return; // Should not happen, but safety check
-    }
+    try {
+      // Get all receipts for this message
+      const receipts = this.db.getMessageReceipts(messageUuid);
+      if (receipts.length < 2) {
+        return; // First receipt only, nothing to compare yet
+      }
 
-    const firstReceipt = receipts[0];
-    const currentReceipt = receipts[receipts.length - 1]; // Most recent
-    const delta = currentReceipt.receivedAt - firstReceipt.receivedAt;
+      const firstReceipt = receipts[0];
+      const currentReceipt = receipts.find(r => r.protocol === protocol);
 
-    // Show the update
-    console.log(chalk.gray(`\n  📡 Also received via: ${chalk.white(protocol)} ${chalk.yellow(`+${delta}ms slower`)}`));
+      if (!currentReceipt || !firstReceipt) {
+        return; // Safety check - receipt not found
+      }
 
-    // Redraw prompt
-    if (this.chatPartner) {
-      process.stdout.write(chalk.green('You: '));
+      const delta = currentReceipt.receivedAt - firstReceipt.receivedAt;
+
+      // Show the update
+      console.log(chalk.gray(`\n  📡 Also received via: ${chalk.white(protocol)} ${chalk.yellow(`+${delta}ms slower`)}`));
+
+      // Redraw prompt
+      if (this.chatPartner) {
+        process.stdout.write(chalk.green('You: '));
+      }
+    } catch (error) {
+      // Silently ignore - this is just for display, not critical
+      this.logger.debug('Error in handleReceipt:', error);
     }
   }
 
