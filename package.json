@@ -6,7 +6,9 @@
   "scripts": {
     "chat": "tsx src/cli.ts",
     "identity": "tsx src/identity-cli.ts",
-    "stats": "tsx src/rate-limit-stats-cli.ts",
+    "stats": "tsx src/detailed-stats.ts",
+    "stats:rate-limits": "tsx src/rate-limit-stats-cli.ts",
+    "stats:legacy": "tsx src/view-stats-legacy.ts",
     "test:continuous": "tsx examples/continuous-test.ts",
     "demo": "tsx examples/full-broadcast-demo.ts",
     "demo:latency": "tsx examples/live-latency-demo.ts",
