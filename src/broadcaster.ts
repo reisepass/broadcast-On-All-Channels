@@ -668,6 +668,13 @@ export class Broadcaster {
       }
 
       const irohKeys = getIrohKeys(recipient as UnifiedIdentity);
+      const myIrohKeys = getIrohKeys(this.identity);
+
+      // Check if trying to send to ourselves
+      if (irohKeys.nodeId === myIrohKeys.nodeId) {
+        throw new Error('Cannot send IROH message to self');
+      }
+
       this.logger.info(`🟣 [IROH] Recipient nodeId: ${irohKeys.nodeId.slice(0, 16)}...`);
 
       const myNodeAddr = await this.irohNode.net.nodeAddr();

@@ -359,7 +359,7 @@ class ChatClient {
     }
   }
 
-  private handleIncomingMessage(message: ChatMessage, protocol: string) {
+  private async handleIncomingMessage(message: ChatMessage, protocol: string) {
     // Only show if from current chat partner
     if (this.chatPartner && message.fromMagnetLink !== this.chatPartner) {
       return;
@@ -368,7 +368,7 @@ class ChatClient {
     // Skip acknowledgments (we handle them silently)
     if (message.type === 'acknowledgment') {
       // Get the original message and show checkmark
-      const receipts = this.db.getMessageReceipts(message.content.replace('ACK: ', ''));
+      const receipts = await this.db.getMessageReceipts(message.content.replace('ACK: ', ''));
       if (receipts.length > 0) {
         console.log(chalk.green(`\n  ✓ Acknowledged via ${protocol} (+${Date.now() - message.timestamp}ms)`));
       }
@@ -376,7 +376,7 @@ class ChatClient {
     }
 
     // Get all receipts for this message
-    const receipts = this.db.getMessageReceipts(message.uuid);
+    const receipts = await this.db.getMessageReceipts(message.uuid);
     const firstReceipt = receipts[0];
 
     // Display the message
@@ -407,7 +407,7 @@ class ChatClient {
     }
   }
 
-  private handleReceipt(messageUuid: string, protocol: string, isDuplicate: boolean) {
+  private async handleReceipt(messageUuid: string, protocol: string, isDuplicate: boolean) {
     // Only show updates for duplicate receipts (subsequent protocols)
     if (!isDuplicate) {
       return;
@@ -415,7 +415,7 @@ class ChatClient {
 
     try {
       // Get all receipts for this message
-      const receipts = this.db.getMessageReceipts(messageUuid);
+      const receipts = await this.db.getMessageReceipts(messageUuid);
       if (receipts.length < 2) {
         return; // First receipt only, nothing to compare yet
       }
