@@ -14,6 +14,8 @@ import type { LightNode } from '@waku/interfaces';
 import mqtt from 'mqtt';
 import WebSocket from 'ws';
 import { Iroh, type NodeAddr } from '@number0/iroh';
+import { existsSync, mkdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 
 import type { UnifiedIdentity } from './identity.js';
 import {
@@ -158,14 +160,20 @@ export class Broadcaster {
     try {
       const signer = createXMTPSigner(this.identity);
       const { randomBytes } = await import('node:crypto');
-      const path = await import('node:path');
 
       // Create encryption key as Uint8Array (32 bytes for 256-bit encryption)
       const dbEncryptionKey = new Uint8Array(randomBytes(32));
 
       // Create absolute database path for XMTP's encrypted message store
       const account = getEthereumAccount(this.identity);
-      const dbPath = path.resolve(process.cwd(), `xmtp-${this.options.xmtpEnv}-${account.address}.db3`);
+      const xmtpDir = resolve(process.cwd(), 'data/xmtp');
+
+      // Ensure the directory exists
+      if (!existsSync(xmtpDir)) {
+        mkdirSync(xmtpDir, { recursive: true });
+      }
+
+      const dbPath = join(xmtpDir, `xmtp-${this.options.xmtpEnv}-${account.address}.db3`);
 
       // Note: encryptionKey is the SECOND parameter, not in options
       this.xmtpClient = await XMTPClient.create(signer, dbEncryptionKey, {

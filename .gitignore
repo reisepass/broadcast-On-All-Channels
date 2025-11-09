@@ -139,6 +139,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Project-specific files
+.DS_Store
 prompt_history.txt
 *.db3
 *.db3-shm
@@ -147,5 +148,6 @@ prompt_history.txt
 data/*.db
 data/identities/
 data/users/
+data/xmtp/
 data/demo-*.db
 data/continuous-test-*.db

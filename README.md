@@ -8,11 +8,11 @@ Ever been unsure which messaging system to trust because they could go down? Don
 
 ### Supported Protocols
 
-- **XMTP** - End-to-end encrypted messaging using Ethereum wallets
-- **Nostr** - Decentralized relay-based messaging protocol
-- **Waku** - Privacy-focused P2P communication (from Status)
-- **MQTT** - Established IoT pub/sub protocol with public brokers
-- **IROH** - High-performance Rust P2P (conceptual - requires Rust integration)
+- **XMTP** - 
+- **Nostr** -  
+- **Waku** - 
+- **MQTT** -  
+- **IROH** -  
 
 ## Key Features
 
