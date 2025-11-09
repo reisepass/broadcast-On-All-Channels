@@ -379,19 +379,24 @@ export class Broadcaster {
   private async sendViaXMTP(recipientAddress: string, message: string): Promise<BroadcastResult> {
     const startTime = Date.now();
     try {
+      console.log('🟢 [XMTP] Starting message send...');
       if (!this.xmtpClient) {
         throw new Error('XMTP client not initialized');
       }
 
+      console.log(`🟢 [XMTP] Recipient address: ${recipientAddress}`);
       const dm = await this.xmtpClient.conversations.newDm(recipientAddress);
+      console.log(`🟢 [XMTP] DM conversation created, sending message...`);
       await dm.send(message);
 
+      console.log(`✅ [XMTP] Message sent successfully`);
       return {
         protocol: 'XMTP V3',
         success: true,
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
+      console.error(`❌ [XMTP] Send failed:`, error);
       return {
         protocol: 'XMTP V3',
         success: false,
@@ -404,10 +409,13 @@ export class Broadcaster {
   private async sendViaNostr(recipient: Omit<UnifiedIdentity, 'magnetLink'>, message: string): Promise<BroadcastResult> {
     const startTime = Date.now();
     try {
+      console.log('🔵 [Nostr] Starting message send...');
       const { privateKey } = getNostrKeys(this.identity);
       const recipientPubkey = getNostrPublicKeyFromIdentity(recipient);
+      console.log(`🔵 [Nostr] Recipient pubkey: ${recipientPubkey.slice(0, 16)}...`);
 
       const encryptedContent = await nip04.encrypt(privateKey, recipientPubkey, message);
+      console.log(`🔵 [Nostr] Message encrypted`);
 
       const eventTemplate: EventTemplate = {
         kind: 4,
@@ -417,17 +425,20 @@ export class Broadcaster {
       };
 
       const signedEvent = finalizeEvent(eventTemplate, privateKey);
+      console.log(`🔵 [Nostr] Event signed, publishing to ${this.nostrRelays.length} relays...`);
 
       // Publish to all connected relays
       const publishPromises = this.nostrRelays.map(relay => relay.publish(signedEvent));
       await Promise.all(publishPromises);
 
+      console.log(`✅ [Nostr] Message published successfully`);
       return {
         protocol: `Nostr (${this.nostrRelays.length} relays)`,
         success: true,
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
+      console.error(`❌ [Nostr] Send failed:`, error);
       return {
         protocol: 'Nostr',
         success: false,
@@ -440,12 +451,14 @@ export class Broadcaster {
   private async sendViaWaku(recipient: Omit<UnifiedIdentity, 'magnetLink'>, message: string): Promise<BroadcastResult> {
     const startTime = Date.now();
     try {
+      console.log('🟡 [Waku] Starting message send...');
       if (!this.wakuNode) {
         throw new Error('Waku node not initialized');
       }
 
       const recipientId = getWakuIdentifier(recipient as UnifiedIdentity);
       const contentTopic = `/broadcast/1/dm-${recipientId}/proto`;
+      console.log(`🟡 [Waku] Content topic: ${contentTopic}`);
 
       // Create routing info for the content topic
       const pubsubTopic = contentTopicToPubsubTopic(contentTopic, 1, 8);
@@ -465,9 +478,11 @@ export class Broadcaster {
       };
 
       const payload = new TextEncoder().encode(JSON.stringify(messageData));
+      console.log(`🟡 [Waku] Sending via lightPush...`);
 
       const result = await this.wakuNode.lightPush.send(encoder, { payload });
 
+      console.log(`✅ [Waku] Message sent successfully`);
       // Mark as successful if send completes without error
       // Note: result.successes.length may be 0 for local testing without relay peers
       return {
@@ -476,7 +491,7 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
-      console.error('Waku send error:', error);
+      console.error('❌ [Waku] Send failed:', error);
       return {
         protocol: 'Waku',
         success: false,
@@ -489,7 +504,9 @@ export class Broadcaster {
   private async sendViaMQTT(recipient: Omit<UnifiedIdentity, 'magnetLink'>, message: string): Promise<BroadcastResult> {
     const startTime = Date.now();
 
+    console.log('🟠 [MQTT] Starting message send...');
     if (this.mqttClients.length === 0) {
+      console.error('❌ [MQTT] No clients connected');
       return {
         protocol: 'MQTT',
         success: false,
@@ -500,6 +517,7 @@ export class Broadcaster {
 
     const recipientId = getMqttIdentifier(recipient as UnifiedIdentity);
     const topic = `dm/${recipientId}`;
+    console.log(`🟠 [MQTT] Topic: ${topic}, publishing to ${this.mqttClients.length} brokers...`);
 
     const payload = JSON.stringify({
       from: this.identity.secp256k1.publicKey,
@@ -512,8 +530,10 @@ export class Broadcaster {
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
         client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
           if (err) {
+            console.error(`❌ [MQTT] Broker ${index + 1} failed:`, err);
             resolve({ success: false, error: String(err) });
           } else {
+            console.log(`✅ [MQTT] Broker ${index + 1} success`);
             resolve({ success: true });
           }
         });
@@ -522,6 +542,7 @@ export class Broadcaster {
 
     const results = await Promise.all(publishPromises);
     const successCount = results.filter(r => r.success).length;
+    console.log(`🟠 [MQTT] Published to ${successCount}/${this.mqttClients.length} brokers`);
 
     return {
       protocol: `MQTT (${successCount}/${this.mqttClients.length} brokers)`,
@@ -534,12 +555,16 @@ export class Broadcaster {
   private async sendViaIROH(recipient: Omit<UnifiedIdentity, 'magnetLink'>, message: string): Promise<BroadcastResult> {
     const startTime = Date.now();
     try {
+      console.log('🟣 [IROH] Starting message send...');
       if (!this.irohNode) {
         throw new Error('IROH node not initialized');
       }
 
       const irohKeys = getIrohKeys(recipient as UnifiedIdentity);
+      console.log(`🟣 [IROH] Recipient nodeId: ${irohKeys.nodeId.slice(0, 16)}...`);
+
       const myNodeAddr = await this.irohNode.net.nodeAddr();
+      console.log(`🟣 [IROH] My relay: ${myNodeAddr.relayUrl}`);
 
       // Create recipient node address from their node ID
       const recipientNodeAddr: NodeAddr = {
@@ -547,17 +572,21 @@ export class Broadcaster {
         relayUrl: myNodeAddr.relayUrl, // Use same relay
       };
 
+      console.log(`🟣 [IROH] Connecting to recipient...`);
       // Get endpoint and connect
       const endpoint = this.irohNode.node.endpoint();
       const conn = await endpoint.connect(recipientNodeAddr, IROH_MESSAGING_ALPN);
 
+      console.log(`🟣 [IROH] Opening bidirectional stream...`);
       // Open bidirectional stream
       const bi = await conn.openBi();
 
+      console.log(`🟣 [IROH] Sending message...`);
       // Send message
       await bi.send.writeAll(Buffer.from(message));
       await bi.send.finish();
 
+      console.log(`✅ [IROH] Message sent successfully`);
       // Optionally wait for ack (with timeout)
       // For now, just close the stream
 
@@ -567,6 +596,7 @@ export class Broadcaster {
         latencyMs: Date.now() - startTime,
       };
     } catch (error) {
+      console.error(`❌ [IROH] Send failed:`, error);
       return {
         protocol: 'IROH',
         success: false,
