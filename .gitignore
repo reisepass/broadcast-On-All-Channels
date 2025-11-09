@@ -144,6 +144,8 @@ prompt_history.txt
 *.db3
 *.db3-shm
 *.db3-wal
+*.db-shm
+*.db-wal
 *.sqlcipher_salt
 data/*.db
 data/identities/
