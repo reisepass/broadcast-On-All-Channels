@@ -214,13 +214,13 @@ class ChatClient {
     } else {
       console.log(chalk.yellow('📋 Select a user or create a new one:\n'));
 
+      console.log(chalk.gray(`  0. ${chalk.green('Create new user')}`));
       for (let i = 0; i < users.length; i++) {
         const user = users[i];
         const lastUsed = new Date(user.lastUsedAt).toLocaleString();
         const userIdentifier = getDisplayName(user.identity.magnetLink);
         console.log(chalk.gray(`  ${i + 1}. ${chalk.white(user.name)} ${chalk.cyan(`[${userIdentifier}]`)} (last used: ${lastUsed})`));
       }
-      console.log(chalk.gray(`  ${users.length + 1}. ${chalk.green('Create new user')}`));
       console.log('');
 
       // Create temporary readline interface for selection
@@ -233,15 +233,15 @@ class ChatClient {
         const answer = await tempRl.question(chalk.yellow('Your choice: '));
         const choice = parseInt(answer);
 
-        if (choice >= 1 && choice <= users.length) {
+        if (choice === 0) {
+          this.currentUser = this.userManager.createUser();
+          console.log(chalk.green(`\n✅ Created user: ${chalk.bold(this.currentUser.name)}\n`));
+          tempRl.close();
+          break;
+        } else if (choice >= 1 && choice <= users.length) {
           this.currentUser = users[choice - 1];
           this.userManager.updateLastUsed(this.currentUser.name);
           console.log(chalk.green(`\n✅ Using user: ${chalk.bold(this.currentUser.name)}\n`));
-          tempRl.close();
-          break;
-        } else if (choice === users.length + 1) {
-          this.currentUser = this.userManager.createUser();
-          console.log(chalk.green(`\n✅ Created user: ${chalk.bold(this.currentUser.name)}\n`));
           tempRl.close();
           break;
         } else {
