@@ -244,7 +244,7 @@ async function main() {
 
   for (const dbPath of dbPaths) {
     try {
-      const db = new ChatDatabase(dbPath);
+      const db = await ChatDatabase.create(dbPath);
       const stats = await getStats(db);
       displayStats(dbPath, stats);
       db.close();

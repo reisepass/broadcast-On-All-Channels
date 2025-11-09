@@ -54,6 +54,7 @@ export interface ProtocolPerformance {
 
 export class ChatDatabase {
   private db: Client;
+  private initPromise: Promise<void>;
 
   constructor(dbPath: string = './data/chat.db') {
     // Ensure data directory exists
@@ -65,7 +66,23 @@ export class ChatDatabase {
     this.db = createClient({
       url: `file:${dbPath}`,
     });
-    this.initTables();
+    this.initPromise = this.initTables();
+  }
+
+  /**
+   * Static factory method for async initialization
+   */
+  static async create(dbPath: string = './data/chat.db'): Promise<ChatDatabase> {
+    const db = new ChatDatabase(dbPath);
+    await db.initPromise;
+    return db;
+  }
+
+  /**
+   * Ensure initialization is complete before executing operations
+   */
+  private async ensureInit(): Promise<void> {
+    await this.initPromise;
   }
 
   /**
@@ -179,6 +196,7 @@ export class ChatDatabase {
 
   // Message operations
   async saveMessage(message: Message): Promise<void> {
+    await this.ensureInit();
     await this.executeWithRetry(() =>
       this.db.execute({
         sql: `
